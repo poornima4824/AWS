@@ -1,0 +1,97 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 596343352176.dkr.ecr.ap-south-1.amazonaws.com
+      - REPOSITORY_URI=596343352176.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$Repository_Name-$Branch_Name
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7) 
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - rm -rf .env
+      - aws ssm get-parameter --region ap-south-1 --name p-poc-cms-env --with-decryption | jq -r '.Parameter.Value' > .env
+      - cat .env
+      - ls -al
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t 596343352176.dkr.ecr.ap-south-1.amazonaws.com/p-poc-ids-cms:latest .
+      #- docker tag ids-cms:latest 799158087370.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:latest 
+      #- docker tag ids-cms 799158087370.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:$CODEBUILD_BUILD_NUMBER
+      #- docker tag ids-cms:latest 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:latest 
+      #- docker tag ids-cms 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:$CODEBUILD_BUILD_NUMBER
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      #- docker push 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:latest
+      #- docker push 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:$CODEBUILD_BUILD_NUMBER
+      - docker push 596343352176.dkr.ecr.ap-south-1.amazonaws.com/p-poc-ids-cms:latest
+      - echo Writing image definitions file...
+      - echo "$Repository_Name-$Branch_Name"
+      # - printf '{"ImageURI":"image_URI"}' > imageDetail.json
+      # - printf '[{"name":"dev_ids_cms","imageUri":"%s"}]' $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imageDetail.json
+      - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imageDetail.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' $Repository_Name-$Branch_Name-container $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imagedefinitions.json
+      - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imageDetail.json
+      - aws ecs update-service --cluster p-poc-ecs-cluster --service p-poc-ids-cms-svc --force-new-deployment
+artifacts:
+  files: 
+    - 'imageDetail.json'
+    - 'imagedefinitions.json'
+    - 'accounts-appspec.yml'
+    - 'accounts-taskdef.json'
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------
+
+
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - yum install -y jq
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin 596343352176.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=596343352176.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$Repository_Name-$Microservice_Name-$Branch_Name
+      - rm -rf ./Ship.AccountAPI/*.json
+      - aws ssm get-parameter --region ap-south-1 --name p-poc-accounts-appsettings-json --with-decryption | jq -r '.Parameter.Value' > ./Ship.AccountAPI/appsettings.json
+      - echo {} >> ./Ship.AccountAPI/appsettings.Development.json
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t 596343352176.dkr.ecr.ap-south-1.amazonaws.com/p-poc-ship-api-accounts:latest -f Accounts.Dockerfile .
+      # - docker tag ImageName:latest 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:latest 
+      # - docker tag ids-cms 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:$CODEBUILD_BUILD_NUMBER
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      # - docker push 596343352176.dkr.ecr.ap-south-1.amazonaws.com/ids-cms:latest
+      - docker push 596343352176.dkr.ecr.ap-south-1.amazonaws.com/p-poc-ship-api-accounts:latest
+      - echo Writing image definitions file...
+      # - printf '{"ImageURI":"image_URI"}' > imageDetail.json
+      - echo "$Repository_Name-$Microservice_Name-$Branch_Name"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $Repository_Name-$Microservice_Name-$Branch_Name-container $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imagedefinitions.json
+      - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER > imageDetail.json
+      
+artifacts:
+  files: 
+    - 'imageDetail.json'
+    - 'imagedefinitions.json'
+    - './Ship.AccountAPI/appsettings.json'
